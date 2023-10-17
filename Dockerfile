@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-FROM alpine:3.18 as build-environment
+FROM --platform=$BUILDPLATFORM alpine:3.18 as build-environment
 
 ARG TARGETARCH
 WORKDIR /opt
@@ -10,13 +10,17 @@ RUN apk add clang lld curl build-base linux-headers git \
     && chmod +x ./rustup.sh \
     && ./rustup.sh -y
 
-RUN [[ "$TARGETARCH" = "arm64" ]] && echo "export CFLAGS=-mno-outline-atomics" >> $HOME/.profile || true
+RUN [[ "$TARGETARCH" = "arm64" ]] \
+    && echo "export CFLAGS=-mno-outline-atomics; export TARGET=aarch64-unknown-linux-musl" >> $HOME/.profile \
+    || echo "export TARGET=x86_64-unknown-linux-musl" >> $HOME/.profile
 
 WORKDIR /opt/foundry
 COPY . .
 
 RUN --mount=type=cache,target=/root/.cargo/registry --mount=type=cache,target=/root/.cargo/git --mount=type=cache,target=/opt/foundry/target \
-    source $HOME/.profile && cargo build --release \
+    source $HOME/.profile \
+    && rustup target add $TARGET \
+    && cargo build --release --target $TARGET \
     && mkdir out \
     && mv target/release/forge out/forge \
     && mv target/release/cast out/cast \
